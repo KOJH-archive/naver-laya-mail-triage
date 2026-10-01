@@ -1,0 +1,19 @@
+export const questions={
+ category:{type:'choice',instructions:'Classify by the main purpose of this email, using subject, sender and body. Priority: actual payment/purchase/delivery records are 결제·배송, even if branded; promotional offers and newsletters are 광고, even when called a welcome message; non-promotional automated account/service notices are 안내; a real work request is 업무; a personal message from an individual is 개인. Do not infer urgency from category.',criteria:{'업무':'Direct business correspondence, meetings, quotations, work requests','개인':'Direct personal correspondence from friends or family','안내':'Non-promotional automated login, signup, verification, account or service notices','결제·배송':'Actual payment, invoice, purchase, refund or delivery status','광고':'Promotions, marketing offers, sales and newsletters','기타':'Does not fit another category'}},
+ urgency:{type:'choice',instructions:'Judge urgency by an action the recipient actually needs to take, not by whether the email is worth reading. Routine promotions, newsletters and informational service notices are low. A normal login notification is low; a suspicious login requiring account protection can be high.',criteria:{'낮음':'No concrete recipient action or deadline; routine ads, newsletters and informational notices','보통':'A concrete recipient action such as confirmation, reply or payment is needed within the next few days','높음':'Immediate recipient action is needed for an imminent deadline, account compromise, payment failure or service interruption'}},
+ needs_reply:{type:'noul',instructions:'Does the sender expect the recipient to reply?',criteria:{true:'The sender asks for a response or information',false:'Informational notification with no response requested'}}
+};
+export function normalize(result){const a=result.answers;if(!a?.category?.probabilities || !['낮음','보통','높음'].includes(a.urgency?.choice) || typeof a.needs_reply?.noul!=='number') throw new Error('Laya 응답 형식을 확인해주세요.');const confidence=Number(a.category.probabilities[a.category.choice]);if(!Number.isFinite(confidence)) throw new Error('분류 확신도가 없습니다.');return {category:a.category.choice,urgency:a.urgency.choice,needsReply:a.needs_reply.noul>=0.5,confidence,reviewNeeded:confidence<0.7 || Math.abs(a.needs_reply.noul-0.5)<0.15,reviewed:false,raw:result};}
+export function applyUrgencyPolicy(mail,decision){
+  const text=`${mail.subject}\n${mail.body.slice(0,1600)}`.toLowerCase();
+  if(decision.category==='광고')return {...decision,urgency:'낮음',urgencySource:'promotion-default'};
+  const risk=/(비정상.{0,8}(로그인|접속)|의심스러운.{0,8}(로그인|접속|결제)|무단.{0,8}(접속|결제)|계정.{0,8}(탈취|도용)|결제.{0,8}실패|suspicious.{0,15}(login|activity)|unauthorized.{0,15}(access|payment)|payment failed)/i.test(text);
+  if(risk)return {...decision,urgency:'높음',urgencySource:'risk-signal',reviewNeeded:true};
+  const deadline=/(오늘까지|금일.{0,12}마감|24시간 이내|즉시.{0,12}(조치|확인|변경)|due today|within 24 hours)/i.test(text);
+  if(deadline)return {...decision,urgency:'높음',urgencySource:'deadline-signal',reviewNeeded:true};
+  const action=/(본인.{0,6}확인.{0,12}(필요|요청|완료)|인증.{0,12}(필요|요청|완료)|승인.{0,12}(필요|요청)|제출.{0,12}(필요|요청)|회신.{0,12}(필요|요청)|결제.{0,12}(필요|요청)|비밀번호.{0,12}(변경|재설정).{0,12}(필요|요청)|action required|verification required|please (confirm|verify|reply|pay))/i.test(text);
+  if(action || decision.needsReply)return {...decision,urgency:'보통',urgencySource:'action-signal'};
+  if(['안내','결제·배송'].includes(decision.category))return {...decision,urgency:'낮음',urgencySource:'routine-default'};
+  return decision;
+}
+export function buildExport(r){return {sourceId:r.id,subject:`[Laya분류결과] [${r.category}] ${r.subject.replace(/[\r\n]/g,' ')}`,body:`발신자: ${r.sender}\n원본 수신 시각: ${r.receivedAt || '미확인'}\n수집 시각: ${r.collectedAt}\n분류: ${r.category}\n긴급도: ${r.urgency}\n답장 필요: ${r.needsReply?'예':'아니요'}\n확인 상태: ${r.reviewed?'검토 완료':r.reviewNeeded?'확인 필요':'미검토'}\n\n--- 원본 본문 ---\n${r.body}`};}

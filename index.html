@@ -1,0 +1,216 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Laya 메일 분류</title>
+<style>*{box-sizing:border-box}body{margin:0;font:14px system-ui;color:#202724;background:#f5f6f7}header{background:white;border-bottom:1px solid #ddd;padding:22px 28px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}h1{font-size:22px;margin:0}button,select,input{font:inherit;padding:9px;border:1px solid #bbc5c0;border-radius:4px;background:white}button{cursor:pointer}button.primary{background:#087d4c;color:white;border-color:#087d4c}button:disabled{opacity:.5;cursor:wait}main{padding:24px;max-width:1400px;margin:auto}.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}#status{color:#52605a}#message{padding:12px 0;color:#9b302b;white-space:pre-wrap}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,400px);gap:24px}.list{overflow:auto;background:white}table{border-collapse:collapse;width:100%;min-width:600px}td,th{text-align:left;padding:14px;border-bottom:1px solid #e5e8e6}th{font-size:12px;color:#68766f}td.subject{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.detail{background:white;padding:20px;min-height:300px}h2{font-size:18px;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 system-ui}label{display:inline-flex;gap:8px;align-items:center;margin:8px 0}.empty{padding:50px;color:#6e7873;text-align:center}@media(max-width:850px){.layout{grid-template-columns:1fr}header,main{padding:16px}}</style>
+<style>
+.job{border-top:1px solid #d9dfdb;border-bottom:1px solid #d9dfdb;padding:18px 0;margin:0 0 24px}
+.steps{display:flex;gap:24px;flex-wrap:wrap;margin:0 0 16px;padding:0;list-style:none;color:#7b8580}
+.steps li{display:flex;gap:8px;align-items:center}.steps span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#e4e8e6;font-size:12px}
+.steps .active{color:#087d4c;font-weight:600}.steps .active span,.steps .done span{background:#087d4c;color:white}.steps .done{color:#32634b}
+.jobline{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}#joblabel{font-weight:600}#jobtime{color:#68766f}
+progress{display:block;width:100%;height:12px;margin:12px 0;accent-color:#087d4c}#jobdetail{color:#52605a;overflow-wrap:anywhere}.job.error #joblabel{color:#9b302b}
+.approval{width:min(680px,calc(100vw - 24px));max-height:90vh;border:1px solid #c7d0ca;border-radius:6px;padding:0;background:white;color:#202724}
+.approval::backdrop{background:rgba(18,31,24,.48)}.approval header{padding:18px 22px}.approval h2{font-size:18px;margin:0}.approval-body{padding:18px 22px;max-height:55vh;overflow:auto}
+.approval form{display:flex;gap:12px;align-items:end;flex-wrap:wrap;border-top:1px solid #e1e6e2;padding:16px 22px}.approval form label{flex:1 1 260px;display:block;margin:0}.approval input{width:100%;margin-top:6px}
+.approval-actions{display:flex;gap:8px}.approval-group{padding:8px 0;border-top:1px solid #e1e6e2}.approval-group h3{font-size:15px;margin:8px 0}.approval-item{padding:8px 0;overflow-wrap:anywhere}.approval-item small{display:block;color:#596860}.approval-item.urgent{background:#fff2f0;border-left:4px solid #c83d31;padding:8px 10px;color:#a52d24}
+</style>
+<header><h1>Laya 메일 분류</h1><span id="status">연결 확인 중</span><span id="mailstatus">메일 연결 안 됨</span></header><main>
+<form id="connection" class="toolbar" autocomplete="off">
+<label>네이버 메일 <input id="account" type="email" placeholder="name@naver.com" required style="max-width:100%;width:220px"></label>
+<label>앱 비밀번호 <input id="password" type="password" autocomplete="new-password" required style="max-width:100%;width:190px"></label>
+<label><input id="remember" type="checkbox">이 PC에 저장</label><button id="login" type="submit">IMAP 연결</button><button id="reconnect" type="button" hidden>저장된 정보로 연결</button><button id="disconnect" type="button">연결 해제</button>
+<a href="https://help.naver.com/service/30029/contents/21344?osType=COMMONOS" target="_blank" rel="noreferrer">네이버 연결 설정</a></form>
+<form id="delivery-settings" class="toolbar" autocomplete="off"><label>결과 받을 Gmail <input id="saved-recipient" type="email" placeholder="name@gmail.com" required style="max-width:100%;width:240px"></label><label><input id="auto-send" type="checkbox" checked>미응답 시 1분 후 자동 전송</label><button id="save-delivery" type="submit">수신 설정 저장</button></form>
+<div class="toolbar"><label>수집 수 <input id="limit" type="number" min="1" max="50" value="10" style="width:75px"></label><label><input id="unread" type="checkbox" checked>안 읽은 메일만</label><button class="primary" id="run">분류 시작</button><button id="train">검토 결과 재학습</button><button id="export">선택 결과 내보내기</button><button id="refresh">새로고침</button></div><div id="message" role="status"></div><div id="training-status" role="status"></div><div class="layout"><div class="list"><table><thead><tr><th>선택</th><th>제목 / 발신자</th><th>분류</th><th>긴급도</th><th>검토</th></tr></thead><tbody id="rows"></tbody></table><div id="empty" class="empty">분류된 메일이 없습니다.</div></div><aside class="detail" id="detail">메일을 선택해주세요.</aside></div></main>
+<dialog id="approval" class="approval" aria-labelledby="approval-title"><header><h2 id="approval-title">최종 승인하시겠습니까?</h2></header><div class="approval-body"><p id="approval-summary"></p><p id="approval-auto-status" role="status"></p><div id="approval-groups"></div></div><form id="approval-form"><label>받을 Gmail 주소<input id="recipient" type="email" placeholder="name@gmail.com" required></label><div class="approval-actions"><button id="change-recipient" type="button">주소 저장</button><button id="decline" type="button">아니오</button><button id="approve" type="submit" class="primary">예, Gmail로 보내기</button></div></form></dialog>
+<script>
+const job=document.createElement('section');job.className='job';job.hidden=true;job.setAttribute('aria-label','분류 진행 상황');
+job.innerHTML='<ol class="steps"><li data-phase="0"><span>1</span>연결</li><li data-phase="1"><span>2</span>메일 수집</li><li data-phase="2"><span>3</span>분류 · 저장</li><li data-phase="3"><span>4</span>완료</li></ol><div class="jobline"><div id="joblabel" role="status"></div><div id="jobtime"></div></div><progress id="jobbar" aria-label="현재 단계 진행률"></progress><div id="jobdetail"></div>';
+const stopButton=document.createElement('button');stopButton.id='stop';stopButton.textContent='분류 중단';stopButton.disabled=true;job.querySelector('.jobline').append(stopButton);
+document.querySelector('.layout').before(job);
+let pollingProgress=false;
+function renderProgress(p){
+  job.hidden=p.stage==='idle';if(job.hidden)return;
+  stopButton.disabled=!p.canStop;
+  const labels={connecting:'네이버 연결 중',listing:'받은메일함 확인 중',collecting:'메일 본문 수집 중',classifying:'Laya 모델 분류 중',saving:'분류 결과 저장 중',done:p.total?'분류 완료':'새로 처리할 메일이 없습니다',error:'작업 중단',stopping:'중단 중',cancelled:'분류 중단됨'};
+  const phase=['connecting'].includes(p.stage)?0:['listing','collecting'].includes(p.stage)?1:p.stage==='done'?3:2;
+  job.classList.toggle('error',p.stage==='error');
+  for(const step of job.querySelectorAll('[data-phase]')){const n=Number(step.dataset.phase);step.classList.toggle('done',n<phase);step.classList.toggle('active',n===phase && p.stage!=='error');}
+  el('joblabel').textContent=labels[p.stage] || p.stage;
+  const elapsed=p.startedAt?Math.max(0,Math.floor(((p.finishedAt?Date.parse(p.finishedAt):Date.now())-Date.parse(p.startedAt))/1000)):0;
+  el('jobtime').textContent=elapsed+'초';
+  const bar=el('jobbar');bar.max=Math.max(1,p.total);
+  if(p.stage==='connecting'||p.stage==='listing'||(p.stage==='collecting'&&!p.total))bar.removeAttribute('value');
+  else bar.value=p.stage==='collecting'?p.collected:p.stage==='done'?bar.max:p.completed;
+  el('jobdetail').textContent=p.stage==='error'||p.stage==='cancelled'||p.stage==='stopping'?(p.error || '남은 작업을 중단하고 있습니다.')+' · 저장 완료 '+p.completed+'개':p.stage==='collecting'?p.collected+' / '+p.total+'개 수집':p.stage==='classifying'||p.stage==='saving'?'현재 '+p.current+' / '+p.total+'번째 · 저장 완료 '+p.completed+'개':p.stage==='done'?p.completed+'개 저장 완료':'처리할 메일을 확인하고 있습니다.';
+}
+async function pollProgress(){if(pollingProgress)return;pollingProgress=true;try{renderProgress(await api('/api/progress'));}catch{}finally{pollingProgress=false;}}
+stopButton.onclick=async()=>{stopButton.disabled=true;try{await api('/api/stop',{});await pollProgress();}catch(e){el('message').textContent=e.message;}};
+let records=[],selected=new Set();
+let autofilledAccount='',lastSavedAccount;
+let approvalToken=null,approvalBusy=false,approvalAutoSendAt=null,approvalAutoEnabled=true,approvalDigestSignature='',lastDeliveryMessage='';
+const el=id=>document.getElementById(id);
+function node(tag,text){const n=document.createElement(tag);n.textContent=text;return n}
+async function api(url,data){
+  const r=await fetch(url,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});
+  const v=await r.json();if(!r.ok)throw Error(v.error);return v;
+}
+async function action(fn){
+  el('message').textContent='';
+  for(const id of ['run','login','reconnect','disconnect','train'])el(id).disabled=true;
+  try{await fn()}catch(e){el('message').textContent=e.message}
+  finally{el('login').disabled=false;await load()}
+}
+async function load(){
+  const v=await api('/api/results');records=v.records;
+  if(v.deliveryMessage && v.deliveryMessage!==lastDeliveryMessage){lastDeliveryMessage=v.deliveryMessage;el('message').textContent=v.deliveryMessage;}
+  el('mailstatus').textContent=v.connected?'IMAP 연결됨'+(v.connectedAccount?' · '+v.connectedAccount:'')+(v.savedAccount && v.savedAccount===v.connectedAccount?' · 이 PC에 저장됨':''):v.busy?'연결 또는 분류 중':v.connectionMessage || (v.savedAccount?'저장된 계정 연결 대기':'메일 연결 안 됨');
+  if((!el('account').value || el('account').value===autofilledAccount) && (v.connectedAccount || v.savedAccount)){
+    autofilledAccount=v.connectedAccount || v.savedAccount;el('account').value=autofilledAccount;
+  }
+  if(lastSavedAccount!==v.savedAccount){el('remember').checked=!!v.savedAccount;lastSavedAccount=v.savedAccount;}
+  el('reconnect').hidden=!v.savedAccount || v.connected;
+  el('reconnect').disabled=v.busy || !v.savedAccount || v.connected;
+  el('run').disabled=v.busy || !v.connected;
+  el('login').disabled=v.busy;
+  el('disconnect').disabled=v.busy || !v.connected;
+  el('train').disabled=v.busy || !records.some(r=>r.reviewed);
+  el('rows').replaceChildren();el('empty').hidden=records.length>0;
+  el('status').title='검토 정답 '+records.filter(r=>r.reviewed).length+'개';
+  for(const r of records){
+    const tr=document.createElement('tr'),td=document.createElement('td'),cb=document.createElement('input');
+    cb.type='checkbox';cb.checked=selected.has(r.id);
+    cb.onchange=()=>cb.checked?selected.add(r.id):selected.delete(r.id);td.append(cb);tr.append(td);
+    const title=node('td',r.subject+' / '+r.sender);title.className='subject';title.onclick=()=>detail(r);
+    tr.append(title,node('td',r.category),node('td',r.urgency),node('td',r.reviewed?'검토 완료':r.decisionSource==='review-memory'?'정답 보정 · 확인 필요':r.decisionSource==='trained-local'?'학습 보정 · 확인 필요':r.reviewNeeded?'확인 필요':'미검토'));
+    el('rows').append(tr);
+  }
+}
+async function loadDeliverySettings(){
+  const settings=await api('/api/delivery-settings');
+  el('saved-recipient').value=settings.recipient || '';
+  el('auto-send').checked=settings.autoSendEnabled;
+}
+el('delivery-settings').onsubmit=event=>{
+  event.preventDefault();
+  action(async()=>{
+    await api('/api/delivery-settings',{recipient:el('saved-recipient').value.trim(),autoSendEnabled:el('auto-send').checked});
+    el('message').textContent='수신 설정을 저장했습니다.';
+    await checkApproval();
+  });
+};
+function renderApprovalCountdown(){
+  if(!approvalToken)return;
+  const status=el('approval-auto-status');
+  if(approvalAutoSendAt){
+    const seconds=Math.max(0,Math.ceil((Date.parse(approvalAutoSendAt)-Date.now())/1000));
+    status.textContent=seconds?'선택하지 않으면 '+seconds+'초 후 '+el('recipient').value+' 주소로 자동 전송됩니다.':'자동 전송을 시작하고 있습니다.';
+  }else status.textContent=approvalAutoEnabled?'수신 Gmail과 네이버 연결이 준비되면 1분 자동 전송이 시작됩니다.':'자동 전송이 꺼져 있습니다.';
+}
+function renderApprovalDigest(digest){
+  const signature=JSON.stringify(digest);
+  if(signature===approvalDigestSignature)return;
+  approvalDigestSignature=signature;
+  el('approval-summary').textContent='새로 분류한 메일 '+digest.total+'건 · 긴급 '+digest.urgent+'건';
+  const container=el('approval-groups');container.replaceChildren();
+  for(const group of digest.groups){
+    const section=document.createElement('section');section.className='approval-group';section.append(node('h3',group.category+' · '+group.items.length+'건'));
+    for(const item of group.items){
+      const row=document.createElement('div');row.className='approval-item'+(item.urgency==='높음'?' urgent':'');
+      row.append(node('div',(item.urgency==='높음'?'긴급 · ':'')+item.subject),node('small',item.sender+(item.needsReply?' · 답장 필요':'')+(item.reviewNeeded?' · 확인 필요':'')));section.append(row);
+    }
+    container.append(section);
+  }
+}
+async function checkApproval(){
+  if(approvalBusy)return;
+  const result=await api('/api/approval'),approval=result.approval,dialog=el('approval');
+  if(!approval){if(dialog.open)dialog.close();approvalToken=null;approvalAutoSendAt=null;approvalDigestSignature='';return;}
+  approvalAutoSendAt=approval.autoSendAt;approvalAutoEnabled=approval.autoSendEnabled;
+  el('decline').disabled=approval.sending;el('approve').disabled=approval.sending;el('change-recipient').disabled=approval.sending;
+  if(approvalToken===approval.token && dialog.open){
+    if(approval.autoSendAt && !el('recipient').readOnly){el('recipient').readOnly=true;el('change-recipient').textContent='주소 변경';}
+    renderApprovalDigest(approval.digest);
+    renderApprovalCountdown();return;
+  }
+  approvalToken=approval.token;el('recipient').value=approval.recipient || '';
+  el('recipient').readOnly=!!approval.autoSendAt;
+  el('change-recipient').textContent=approval.autoSendAt?'주소 변경':'주소 저장';
+  renderApprovalDigest(approval.digest);
+  renderApprovalCountdown();
+  if(!dialog.open)dialog.showModal();
+}
+async function declineApproval(){if(!approvalToken)return;approvalBusy=true;try{await api('/api/decline',{token:approvalToken});el('approval').close();approvalToken=null;el('message').textContent='전송하지 않았습니다.';}catch(e){el('message').textContent=e.message;}finally{approvalBusy=false;}}
+el('decline').onclick=declineApproval;
+el('approval').addEventListener('cancel',event=>{event.preventDefault();declineApproval()});
+el('change-recipient').onclick=async()=>{
+  if(approvalBusy || !approvalToken)return;
+  approvalBusy=true;
+  try{
+    if(el('recipient').readOnly){
+      await api('/api/pause-approval',{token:approvalToken});
+      approvalAutoSendAt=null;el('recipient').readOnly=false;el('change-recipient').textContent='주소 저장';el('recipient').focus();
+    }else{
+      const to=el('recipient').value.trim().toLowerCase();
+      if(!/^[a-z0-9._%+-]+@gmail\.com$/.test(to)){el('recipient').setCustomValidity('Gmail 주소를 입력해주세요.');el('recipient').reportValidity();return;}
+      await api('/api/delivery-settings',{recipient:to,autoSendEnabled:el('auto-send').checked});
+      el('saved-recipient').value=to;
+      el('message').textContent='수신 주소를 저장했습니다.';
+    }
+  }catch(e){el('message').textContent=e.message;}
+  finally{approvalBusy=false;await checkApproval();}
+};
+el('approval-form').onsubmit=async event=>{
+  event.preventDefault();if(approvalBusy || !approvalToken)return;
+  const to=el('recipient').value.trim();if(!/^[a-z0-9._%+-]+@gmail\.com$/i.test(to)){el('recipient').setCustomValidity('Gmail 주소를 입력해주세요.');el('recipient').reportValidity();return;}
+  approvalBusy=true;el('approve').disabled=true;el('decline').disabled=true;
+  try{await api('/api/send',{token:approvalToken,recipient:to,confirmed:true});el('message').textContent='분류 결과 메일을 보냈습니다.';el('approval').close();approvalToken=null;}
+  catch(e){el('message').textContent=e.message;el('approval').close();approvalToken=null;}
+  finally{approvalBusy=false;el('approve').disabled=false;el('decline').disabled=false;}
+};
+el('recipient').oninput=()=>el('recipient').setCustomValidity('');
+function detail(r){
+  const p=el('detail');p.replaceChildren(node('h2',r.subject),node('p',r.sender),node('p','모델 확신도 '+Math.round(r.confidence*100)+'%'));
+  if(r.readStateVerified)p.append(node('p','수집 당시 '+(r.seen?'읽은 메일':'안 읽은 메일')+' · 읽음 상태 유지 확인'));
+  if(r.decisionSource==='review-memory')p.append(node('p','검토 정답 보정 적용 · 유사 사례 '+r.correction.examples+'개 · Laya 최초 분류: '+r.modelPrediction.category));
+  if(r.decisionSource==='trained-local')p.append(node('p','학습 분류기 보정 적용 · Laya 최초 분류: '+r.modelPrediction.category));
+  const urgencyReason={ 'promotion-default':'광고 기본 기준','routine-default':'일반 알림·영수증 기본 기준','action-signal':'조치 또는 회신 요청','risk-signal':'보안·결제 위험 신호','deadline-signal':'임박한 마감 신호' }[r.urgencySource];
+  if(urgencyReason)p.append(node('p','긴급도 판단: '+urgencyReason));
+  if(r.modelBodyTruncated)p.append(node('p','긴 본문의 앞부분만 모델에 전달됨 · 원문 확인 필요'));
+  const s=document.createElement('select');
+  for(const c of ['업무','개인','안내','결제·배송','광고','기타']){const o=node('option',c);o.value=c;s.append(o)}
+  s.value=r.category;const urgency=document.createElement('select');
+  for(const value of ['낮음','보통','높음']){const option=node('option',value);option.value=value;urgency.append(option)}
+  urgency.value=r.urgency;const urgencyLabel=node('label','긴급도 ');urgencyLabel.append(urgency);
+  const label=node('label','답장 필요'),cb=document.createElement('input');
+  cb.type='checkbox';cb.checked=r.needsReply;label.prepend(cb);
+  const b=node('button','검토 저장');
+  b.onclick=()=>action(async()=>{await api('/api/update',{id:r.id,category:s.value,urgency:urgency.value,needsReply:cb.checked});await load();detail(records.find(x=>x.id===r.id))});
+  p.append(s,urgencyLabel,label,b,node('pre',r.body));
+}
+el('connection').onsubmit=event=>{
+  event.preventDefault();const password=el('password').value;el('password').value='';
+  action(async()=>{await api('/api/connect',{account:el('account').value,password,remember:el('remember').checked});el('message').textContent='읽기 전용 연결을 확인했습니다.'});
+};
+el('disconnect').onclick=()=>action(()=>api('/api/disconnect',{}));
+el('reconnect').onclick=()=>action(()=>api('/api/reconnect',{}));
+el('run').onclick=()=>action(async()=>{
+  const request=api('/api/classify',{limit:Number(el('limit').value),unreadOnly:el('unread').checked});
+  await request;await pollProgress();await checkApproval();
+});
+el('refresh').onclick=()=>action(load);
+async function loadTraining(){const result=await api('/api/training');const r=result.report;el('training-status').textContent=r?.publicSeed?'가상 예시로 만든 공개 기본 분류기 적용 중 · 개인 메일 학습 데이터 없음':r?'검토 정답 '+r.reviewed+'개로 학습 · 발신자별 평가 '+r.evaluated+'개 중 Laya '+r.baseCorrect+'개, 학습 보정 적용 시 '+r.blendedCorrect+'개 · '+(r.enabled?'유사한 새 메일에 제한 적용':'새 메일에는 적용 보류'):'';}
+el('train').onclick=()=>action(async()=>{const result=await api('/api/train',{});const r=result.report;await loadTraining();el('message').textContent=r.enabled?'재학습을 완료하고 제한적으로 적용했습니다.':'재학습은 완료했지만 검증 기준을 충족하지 않아 적용을 보류했습니다.';});
+el('export').onclick=()=>action(async()=>{
+  const data=await api('/api/export',{ids:[...selected]});
+  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download='laya-results.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+api('/api/health').then(v=>el('status').textContent=v.model?'Laya 연결됨':'Laya 준비 필요').catch(()=>el('status').textContent='연결 확인 실패');
+loadDeliverySettings().catch(e=>el('message').textContent=e.message);
+load().catch(e=>el('message').textContent=e.message);
+checkApproval().catch(()=>{});
+loadTraining().catch(()=>{});
+setInterval(()=>load().catch(()=>{}),10000);
+setInterval(()=>checkApproval().catch(()=>{}),3000);
+pollProgress();setInterval(pollProgress,1000);setInterval(renderApprovalCountdown,1000);
+</script></html>

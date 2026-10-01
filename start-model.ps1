@@ -1,0 +1,10 @@
+$ErrorActionPreference = 'Stop'
+$env:HF_HOME = Join-Path $PSScriptRoot 'data\models'
+$env:HF_HUB_DISABLE_TELEMETRY = '1'
+$env:LAYA_HOST = '127.0.0.1'
+$env:LAYA_PORT = '8000'
+$env:LAYA_MODELS = 'multilingual'
+$env:LAYA_MAX_LOADED = '1'
+$env:LAYA_DEVICE = 'cpu'
+$env:LAYA_THREADS = '4'
+& (Join-Path $PSScriptRoot '.venv\Scripts\laya-serve.exe')

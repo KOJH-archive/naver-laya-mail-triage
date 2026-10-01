@@ -1,0 +1,3 @@
+joblib==1.6.0
+scikit-learn==1.9.1
+laya[serve] @ git+https://github.com/NandhaKishorM/laya.git@6d942c92081fbc139e736bbd9ac0023223c29b7f

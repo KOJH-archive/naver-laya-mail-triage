@@ -1,0 +1,14 @@
+{
+  "publicSeed": true,
+  "examples": 60,
+  "enabled": true,
+  "threshold": 0.35,
+  "categoryCounts": {
+    "업무": 10,
+    "개인": 10,
+    "안내": 10,
+    "결제·배송": 10,
+    "광고": 10,
+    "기타": 10
+  }
+}
