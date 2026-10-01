@@ -1,13 +1,15 @@
 # Naver Laya Mail Triage
 
-네이버 메일을 로컬에서 수집하고 [Laya](https://github.com/NandhaKishorM/laya)의 다국어 모델로 분류하는 Windows 앱입니다. 분류가 끝나면 최종 승인 창을 보여줍니다. `예`를 누르면 즉시 발송, `아니오`를 누르면 취소하며, 선택하지 않으면 저장된 Gmail 주소로 **60초 후 자동 발송**합니다. 호스팅된 AI API와 브라우저 자동 로그인은 사용하지 않습니다.
+네이버 메일을 IMAP으로 읽어 로컬 PC에서 [Laya](https://github.com/NandhaKishorM/laya) 모델로 자동 분류하는 Windows 메일 분류기입니다. 광고, 안내, 업무, 결제·배송, 보안, 긴급 메일을 구분하고, 최종 승인 후 지정한 Gmail 주소로 요약 결과를 전송합니다. 개인정보와 메일 본문을 외부 AI API로 보내지 않는 로컬 AI 메일 분석 도구를 목표로 합니다.
+
+분류가 끝나면 최종 승인 창을 보여줍니다. `예`를 누르면 즉시 발송, `아니오`를 누르면 취소하며, 선택하지 않으면 저장된 Gmail 주소로 **60초 후 자동 발송**합니다. 호스팅된 AI API와 브라우저 자동 로그인은 사용하지 않습니다.
 
 **Local-first Naver mail triage powered by Laya, an open-source Jev-compatible System One decision model.**
 
 **추천 GitHub 저장소 이름:** `naver-laya-mail-triage`
-**GitHub About 설명:** `Local-first Naver mail triage powered by Laya, an open-source Jev-compatible System One decision model.`
+**GitHub About 설명:** `네이버 메일을 로컬 Laya 모델로 자동 분류하고, 승인 후 Gmail로 요약 전송하는 개인정보 보호형 메일 분류 도구`
 
-**추천 Topics:** `laya`, `jev`, `system-one`, `local-ai`, `email-triage`, `naver-mail`, `imap`
+**추천 Topics:** `naver-mail`, `email-classification`, `mail-triage`, `local-ai`, `laya`, `korean`, `privacy`, `imap`, `gmail`, `automation`, `jev`, `system-one`
 
 ## 주요 기능
 

@@ -4,7 +4,9 @@
 
 - 프로젝트명: **Naver Laya Mail Triage**
 - 추천 GitHub 저장소명: `naver-laya-mail-triage`
+- 추천 GitHub 설명: `네이버 메일을 로컬 Laya 모델로 자동 분류하고, 승인 후 Gmail로 요약 전송하는 개인정보 보호형 메일 분류 도구`
 - 목적: 개인 네이버 메일을 로컬에서 읽고 분류·검토한 다음, 즉시 승인하거나 미응답 60초가 지나면 지정된 Gmail로 요약을 발송한다.
+- 한국어 검색 키워드: 네이버 메일 자동분류, 메일 분류기, 로컬 AI 메일 분석, 개인정보 보호 메일 요약.
 - 대상 환경: Windows 단일 사용자 PC. 공용 웹 서버나 다중 사용자 서비스가 아니다.
 - 기본 주소: 앱 `127.0.0.1:4327`, Laya 서버 `127.0.0.1:8000`.
 - 모델 계열 설명: [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)와 마찬가지로 상태와 타입이 지정된 질문에서 결정을 얻는 System One 방식. Laya 서버는 원저장소에서 Jev-compatible HTTP 형식을 표방한다. 동일한 모델이나 성능을 의미하지 않는다.
