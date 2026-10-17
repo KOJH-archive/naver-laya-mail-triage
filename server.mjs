@@ -35,6 +35,13 @@ if(savedApproval?.status==='sending'){
 let progress={stage:'idle',total:0,collected:0,completed:0,current:0,startedAt:null,finishedAt:null,error:''};
 let trainingReport=await fs.readFile(path.join(data,'review-classifier-report.json'),'utf8').then(JSON.parse).catch(()=>null)
   || await fs.readFile(path.join(root,'seed','public-report.json'),'utf8').then(JSON.parse).catch(()=>null);
+function summarizeRecord(record){
+  const {body,raw,modelPrediction,correction,...rest}=record;
+  return {...rest,hasBody:typeof body==='string',bodyLength:typeof body==='string'?body.length:0,
+    modelPrediction:modelPrediction?{category:modelPrediction.category,urgency:modelPrediction.urgency,needsReply:modelPrediction.needsReply}:null,
+    correction:correction?{examples:correction.examples}:undefined};
+}
+function detailRecord(record){return {...summarizeRecord(record),body:record.body};}
 const MODEL_BODY_CHARS=900;
 const MODEL_MAX_LEN=1024;
 const LAYA_BATCH_SIZE=5;
@@ -209,7 +216,12 @@ const server = http.createServer(async (req,res) => {
     if (req.headers.host !== expected && req.headers.host !== `localhost:${process.env.PORT || 4327}`) return reply(403,{error:'Host rejected'});
     if (req.method !== 'GET' && req.headers.origin !== `http://${req.headers.host}`) return reply(403,{error:'Origin rejected'});
     if (req.method==='GET' && req.url==='/') return reply(200,await fs.readFile(path.join(root,'index.html'),'utf8'),'text/html');
-    if (req.method==='GET' && req.url==='/api/results') return reply(200,{records,busy,connected:!!credentials,connectedAccount:credentials?.account || null,savedAccount,connectionMessage,deliveryMessage});
+    if (req.method==='GET' && req.url==='/api/results') return reply(200,{records:records.map(summarizeRecord),busy,connected:!!credentials,connectedAccount:credentials?.account || null,savedAccount,connectionMessage,deliveryMessage});
+    if (req.method==='GET' && req.url.startsWith('/api/record?')) {
+      const id=new URL(req.url,'http://127.0.0.1').searchParams.get('id');
+      const record=records.find(item=>item.id===id);if(!record)throw new Error('메일을 찾을 수 없습니다.');
+      return reply(200,detailRecord(record));
+    }
     if (req.method==='GET' && req.url==='/api/progress') return reply(200,{...progress,busy,canStop:!!jobController && !jobController.signal.aborted});
     if (req.method==='GET' && req.url==='/api/training') return reply(200,{report:trainingReport});
     if (req.method==='GET' && req.url==='/api/approval') return reply(200,{approval:pendingApproval?{token:pendingApproval.token,digest:buildDigest(records.filter(record=>pendingApproval.ids.includes(record.id))),recipient,autoSendAt:pendingApproval.autoSendAt,sending:pendingApproval.sending,autoSendEnabled}:null});

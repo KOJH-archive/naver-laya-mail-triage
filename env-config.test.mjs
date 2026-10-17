@@ -30,11 +30,11 @@ test('recipient persists without replacing Naver credentials',async()=>{
     assert.equal((await loadCredentials(filename)).account,'test@naver.com');
   }finally{await fs.rm(filename,{force:true});await fs.rmdir(dir);}
 });
-test('unattended delivery defaults on and can be disabled',async()=>{
+test('unattended delivery defaults off and can be enabled',async()=>{
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'laya-auto-'));
   const filename=path.join(dir,'.env');
   try{
-    assert.equal(await loadAutoSend(filename),true);
+    assert.equal(await loadAutoSend(filename),false);
     await saveCredentials(filename,{account:'test@naver.com',password:'sample-only'});
     await saveDeliverySettings(filename,'results@gmail.com',true);
     assert.equal(await loadRecipient(filename),'results@gmail.com');

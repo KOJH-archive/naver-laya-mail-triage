@@ -18,7 +18,7 @@ progress{display:block;width:100%;height:12px;margin:12px 0;accent-color:#087d4c
 <label>앱 비밀번호 <input id="password" type="password" autocomplete="new-password" required style="max-width:100%;width:190px"></label>
 <label><input id="remember" type="checkbox">이 PC에 저장</label><button id="login" type="submit">IMAP 연결</button><button id="reconnect" type="button" hidden>저장된 정보로 연결</button><button id="disconnect" type="button">연결 해제</button>
 <a href="https://help.naver.com/service/30029/contents/21344?osType=COMMONOS" target="_blank" rel="noreferrer">네이버 연결 설정</a></form>
-<form id="delivery-settings" class="toolbar" autocomplete="off"><label>결과 받을 Gmail <input id="saved-recipient" type="email" placeholder="name@gmail.com" required style="max-width:100%;width:240px"></label><label><input id="auto-send" type="checkbox" checked>미응답 시 1분 후 자동 전송</label><button id="save-delivery" type="submit">수신 설정 저장</button></form>
+<form id="delivery-settings" class="toolbar" autocomplete="off"><label>결과 받을 Gmail <input id="saved-recipient" type="email" placeholder="name@gmail.com" required style="max-width:100%;width:240px"></label><label><input id="auto-send" type="checkbox">미응답 시 1분 후 자동 전송</label><button id="save-delivery" type="submit">수신 설정 저장</button></form>
 <div class="toolbar"><label>수집 수 <input id="limit" type="number" min="1" max="50" value="10" style="width:75px"></label><label><input id="unread" type="checkbox" checked>안 읽은 메일만</label><button class="primary" id="run">분류 시작</button><button id="sample">무작위 검토</button><button id="train">검토 결과 재학습</button><button id="export">선택 결과 내보내기</button><button id="refresh">새로고침</button></div><div id="message" role="status"></div><div class="layout"><div class="list"><table><thead><tr><th>선택</th><th>제목 / 발신자</th><th>분류</th><th>긴급도</th><th>검토</th></tr></thead><tbody id="rows"></tbody></table><div id="empty" class="empty">분류된 메일이 없습니다.</div></div><aside class="detail" id="detail">메일을 선택해주세요.</aside></div></main>
 <dialog id="approval" class="approval" aria-labelledby="approval-title"><header><h2 id="approval-title">최종 승인하시겠습니까?</h2></header><div class="approval-body"><p id="approval-summary"></p><p id="approval-auto-status" role="status"></p><div id="approval-groups"></div></div><form id="approval-form"><label>받을 Gmail 주소<input id="recipient" type="email" placeholder="name@gmail.com" required></label><div class="approval-actions"><button id="change-recipient" type="button">주소 저장</button><button id="decline" type="button">아니오</button><button id="approve" type="submit" class="primary">예, Gmail로 보내기</button></div></form></dialog>
 <script>
@@ -46,7 +46,7 @@ async function pollProgress(){if(pollingProgress)return;pollingProgress=true;try
 stopButton.onclick=async()=>{stopButton.disabled=true;try{await api('/api/stop',{});await pollProgress();}catch(e){el('message').textContent=e.message;}};
 let records=[],selected=new Set();
 let autofilledAccount='',lastSavedAccount;
-let approvalToken=null,approvalBusy=false,approvalAutoSendAt=null,approvalAutoEnabled=true,approvalDigestSignature='',lastDeliveryMessage='';
+let approvalToken=null,approvalBusy=false,approvalAutoSendAt=null,approvalAutoEnabled=false,approvalDigestSignature='',lastDeliveryMessage='';
 const el=id=>document.getElementById(id);
 function node(tag,text){const n=document.createElement(tag);n.textContent=text;return n}
 async function api(url,data){
@@ -168,7 +168,10 @@ el('approval-form').onsubmit=async event=>{
   finally{approvalBusy=false;el('approve').disabled=false;el('decline').disabled=false;}
 };
 el('recipient').oninput=()=>el('recipient').setCustomValidity('');
-function detail(r){
+async function detail(r){
+  if(typeof r.body!=='string'){
+    try{r={...r,...await api('/api/record?id='+encodeURIComponent(r.id));}catch(e){el('message').textContent=e.message;return;}
+  }
   const p=el('detail');p.replaceChildren(node('h2',r.subject),node('p',r.sender),node('p','모델 확신도 '+Math.round(r.confidence*100)+'%'));
   if(r.readStateVerified)p.append(node('p','수집 당시 '+(r.seen?'읽은 메일':'안 읽은 메일')+' · 읽음 상태 유지 확인'));
   if(r.decisionSource==='review-memory')p.append(node('p','검토 정답 보정 적용 · 유사 사례 '+r.correction.examples+'개'+(r.modelPrediction?' · Laya 최초 분류: '+r.modelPrediction.category:' · Laya 호출 생략')));
