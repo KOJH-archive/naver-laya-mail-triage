@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {categorySignal} from './category-policy.mjs';
+import {loadProtectedRecords} from './secure-data.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const sinceArg=process.argv.find(arg=>arg.startsWith('--received-since='));
@@ -22,11 +23,7 @@ const receivedSinceAt=kstMidnight(since);
 const collectedSinceAt=kstMidnight(collectedSince);
 
 const categories=['업무','개인','안내','결제·배송','광고','기타'];
-const resultText=await fs.readFile(path.join(root,'data','results.json'),'utf8').catch(error=>{
-  if(error.code==='ENOENT')return '[]';
-  throw error;
-});
-const rows=JSON.parse(resultText);
+const {records:rows}=await loadProtectedRecords(path.join(root,'data','results.json'),path.join(root,'data','body-vault.dpapi'));
 const examples=rows.filter(row=>row.reviewed && categories.includes(row.category) && (!sampleOnly || row.evaluationSample) && (receivedSinceAt===null || (Number.isFinite(Date.parse(row.receivedAt)) && Date.parse(row.receivedAt)>=receivedSinceAt)) && (collectedSinceAt===null || (Number.isFinite(Date.parse(row.collectedAt)) && Date.parse(row.collectedAt)>=collectedSinceAt)))
   .map(row=>{const signal=categorySignal(row);return {truth:row.category,baseline:row.modelPrediction?.category || row.raw?.answers?.category?.choice,policy:signal?.category,signal:signal?.reason,initial:row.initialDecision?.category,urgency:row.urgency,initialUrgency:row.initialDecision?.urgency,modelUrgency:row.raw?.answers?.urgency?.choice,automatedSender:/(?:no-?reply|notify|notification|news|marketing|mailer|alert|service|support|info)\b/i.test(row.sender || ''),consumerSender:/@(gmail\.com|naver\.com|daum\.net|kakao\.com|hanmail\.net|outlook\.com)/i.test(row.sender || '')};});
 const baselineRows=examples.filter(row=>categories.includes(row.baseline));

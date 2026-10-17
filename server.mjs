@@ -10,10 +10,15 @@ import { applyCorrections, findReviewCorrection } from './corrections.mjs';
 import { classifyByPolicy } from './category-policy.mjs';
 import { buildDigest } from './digest.mjs';
 import { autoSendDeadline, autoSendDue } from './approval-policy.mjs';
+import { loadProtectedRecords, saveProtectedRecords } from './secure-data.mjs';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const data = path.join(root, 'data');
 await fs.mkdir(data, { recursive: true });
-let records = JSON.parse(await fs.readFile(path.join(data, 'results.json'), 'utf8').catch(() => '[]'));
+const resultsFile=path.join(data,'results.json');
+const bodyVaultFile=path.join(data,'body-vault.dpapi');
+const storedRecords=await loadProtectedRecords(resultsFile,bodyVaultFile);
+let records=storedRecords.records;
+if(storedRecords.migrated)await saveProtectedRecords(resultsFile,bodyVaultFile,records);
 let credentials = null, busy = false;
 const envFile=path.join(root,'.env');
 let connectionMessage='';
@@ -54,7 +59,7 @@ function runClassifier(action,input,signal) {
     worker.stdout.setEncoding('utf8');worker.stdout.on('data',chunk=>{output+=chunk;});worker.stderr.resume();
     worker.on('error',()=>{clearTimeout(timer);reject(new Error('학습 분류기를 실행할 수 없습니다.'));});
     worker.on('close',()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);try{const result=JSON.parse(output);if(result.error)reject(new Error(result.error));else resolve(result);}catch{reject(new Error('학습 분류기 응답을 확인할 수 없습니다.'));}});
-    worker.stdin.on('error',()=>{});worker.stdin.end(JSON.stringify(input || {}));
+    worker.stdin.on('error',()=>{});worker.stdin.end(JSON.stringify(action==='train'?records:input || {}));
   });
 }
 function readMail(config, onProgress=()=>{}, signal) {
@@ -152,7 +157,7 @@ async function resetAutoSendDeadline(){
   armAutoSend();
 }
 let saving=Promise.resolve();
-async function save() {const snapshot=JSON.stringify(records,null,2);const task=saving.catch(()=>{}).then(async()=>{await fs.writeFile(path.join(data,'results.tmp'),snapshot);await fs.rename(path.join(data,'results.tmp'),path.join(data,'results.json'));});saving=task;await task;}
+async function save() {const task=saving.catch(()=>{}).then(()=>saveProtectedRecords(resultsFile,bodyVaultFile,records));saving=task;await task;}
 async function collect(limit, unreadOnly) {
   if (!credentials) throw new Error('먼저 네이버 IMAP을 연결해주세요.');
   const signal=jobController.signal;

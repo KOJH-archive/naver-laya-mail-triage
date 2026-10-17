@@ -175,7 +175,8 @@ Laya는 일반적인 채팅형 LLM이 아니라 상태(`state`)와 질문(`quest
 | --- | --- | --- |
 | `.env.example` | 빈 설정 예시 | 공개 가능 |
 | `.env` | 네이버 주소·DPAPI 보호 앱 비밀번호·Gmail 주소·자동 발송 설정 | 공개 금지 |
-| `data/results.json` | 원문, 발신자, 수신 시각, 분류·검토 기록 | 공개 금지 |
+| `data/results.json` | 발신자, 수신 시각, 분류·검토 메타데이터 | 공개 금지 |
+| `data/body-vault.dpapi` | Windows 사용자 계정으로 보호한 메일 원문 저장소 | 공개 금지 |
 | `data/review-classifier.joblib` | 개인 메일로 학습한 문자 특징/모델 | 공개 금지 |
 | `data/review-classifier-report.json` | 개인 학습 평가·건수 | 공개 금지 |
 | `data/models/`, `data/browser/`, 로그, 발송 기록 | 체크포인트 캐시·예전 세션·운영 기록 | 공개 금지 |

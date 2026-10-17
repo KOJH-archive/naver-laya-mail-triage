@@ -36,8 +36,8 @@ def model():
     return make_pipeline(TfidfVectorizer(analyzer='char', ngram_range=(2, 4), sublinear_tf=True, max_features=30000), LogisticRegression(max_iter=400, class_weight='balanced'))
 
 
-def train():
-    rows = json.loads(RESULTS.read_text(encoding='utf-8'))
+def train(input_rows=None):
+    rows = input_rows if isinstance(input_rows, list) else json.loads(RESULTS.read_text(encoding='utf-8'))
     reviewed = [r for r in rows if r.get('reviewed') and r.get('category') and r.get('subject') and r.get('body')]
     if len(reviewed) < 12 or len({r['category'] for r in reviewed}) < 2:
         raise ValueError('학습하려면 서로 다른 분류를 포함한 검토 메일 12개 이상이 필요합니다.')
@@ -98,7 +98,10 @@ def predict():
 
 if __name__ == '__main__':
     try:
-        result = train() if len(sys.argv) > 1 and sys.argv[1] == 'train' else predict()
+        if len(sys.argv) > 1 and sys.argv[1] == 'train':
+            result = train(json.load(sys.stdin))
+        else:
+            result = predict()
         if result is not None:
             print(json.dumps(result, ensure_ascii=False))
     except Exception as error:
