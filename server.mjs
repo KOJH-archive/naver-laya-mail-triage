@@ -3,10 +3,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomInt } from 'node:crypto';
 import { buildExport, questions, normalize, applyUrgencyPolicy } from './triage.mjs';
 import { loadCredentials, saveCredentials, loadRecipient, saveRecipient, loadAutoSend, saveDeliverySettings } from './env-config.mjs';
-import { applyCorrections } from './corrections.mjs';
+import { applyCorrections, findReviewCorrection } from './corrections.mjs';
+import { classifyByPolicy } from './category-policy.mjs';
 import { buildDigest } from './digest.mjs';
 import { autoSendDeadline, autoSendDue } from './approval-policy.mjs';
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +35,9 @@ if(savedApproval?.status==='sending'){
 let progress={stage:'idle',total:0,collected:0,completed:0,current:0,startedAt:null,finishedAt:null,error:''};
 let trainingReport=await fs.readFile(path.join(data,'review-classifier-report.json'),'utf8').then(JSON.parse).catch(()=>null)
   || await fs.readFile(path.join(root,'seed','public-report.json'),'utf8').then(JSON.parse).catch(()=>null);
-const MODEL_BODY_CHARS=1600;
+const MODEL_BODY_CHARS=900;
+const MODEL_MAX_LEN=1024;
+const LAYA_BATCH_SIZE=5;
 function runClassifier(action,input,signal) {
   return new Promise((resolve,reject)=>{
     const worker=spawn(path.join(root,'.venv','Scripts','python.exe'),[path.join(root,'train_classifier.py'),...(action==='train'?['train']:[])],{windowsHide:true,env:{...process.env,PYTHONIOENCODING:'utf-8'}});
@@ -71,6 +74,29 @@ function sendDigest(config) {
     worker.on('close',()=>{clearTimeout(timer);try{const result=JSON.parse(output);if(result.error)reject(new Error(result.error));else resolve(result);}catch{reject(new Error('메일 발송 결과를 확인할 수 없습니다. Gmail 수신함을 확인해주세요.'));}});
     worker.stdin.on('error',()=>{});worker.stdin.end(JSON.stringify(config));
   });
+}
+async function classifyWithLaya(items,signal) {
+  const states=items.map(item=>({subject:item.mail.subject,sender:item.mail.sender,body:item.mail.body.slice(0,MODEL_BODY_CHARS)}));
+  const body={states,questions,model:'multilingual',max_len:MODEL_MAX_LEN};
+  const batch=await fetch('http://127.0.0.1:8000/v1/systemone/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.any([signal,AbortSignal.timeout(180000)])}).catch(error=>({ok:false,status:error.name==='AbortError'?408:0,error}));
+  if(batch.ok){
+    const json=await batch.json();
+    if(Array.isArray(json.results) && json.results.length===items.length)return json.results;
+    throw new Error('Laya batch 응답 형식을 확인해주세요.');
+  }
+  if(![0,404,405].includes(batch.status)){
+    let detail='';
+    try{detail=JSON.stringify(await batch.json());}catch{}
+    throw new Error(`Laya batch 분류 실패 (${batch.status}). ${detail}`.trim());
+  }
+  const results=[];
+  for(const item of items){
+    signal.throwIfAborted();
+    const response=await fetch('http://127.0.0.1:8000/v1/systemone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:{subject:item.mail.subject,sender:item.mail.sender,body:item.mail.body.slice(0,MODEL_BODY_CHARS)},questions,model:'multilingual',max_len:MODEL_MAX_LEN}),signal:AbortSignal.any([signal,AbortSignal.timeout(180000)])});
+    if(!response.ok)throw new Error(`Laya 분류 실패 (${response.status}). 로컬 모델 서버를 확인해주세요.`);
+    results.push(await response.json());
+  }
+  return results;
 }
 let autoSendTimer=null;
 async function savePendingApproval(){
@@ -128,26 +154,50 @@ async function collect(limit, unreadOnly) {
   progress.total=mails.length;
   const trained=trainingReport?.enabled && mails.length?await runClassifier('predict',mails,signal):[];
   signal.throwIfAborted();
+  const layaItems=[];
   for (const [index,mail] of mails.entries()) {
     signal.throwIfAborted();
     progress.stage='classifying';progress.current=progress.completed+1;
-    const text=mail.body, sender=mail.sender;
-    const modelBody=mail.body.slice(0,MODEL_BODY_CHARS);
-    const response = await fetch('http://127.0.0.1:8000/v1/systemone', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:{subject:mail.subject,sender,body:modelBody},questions,model:'multilingual',max_len:2048}),signal:AbortSignal.any([signal,AbortSignal.timeout(180000)])});
-    if (!response.ok) throw new Error(`Laya 분류 실패 (${response.status}). 로컬 모델 서버를 확인해주세요.`);
-    const prediction=normalize(await response.json());signal.throwIfAborted();
-    const modelBodyTruncated=mail.body.length>MODEL_BODY_CHARS || prediction.raw.usage?.truncated===true;
-    let decision=applyCorrections(mail,prediction,records);
-    const trainedDecision=trained[index];
-    if(decision.decisionSource==='laya' && trainedDecision?.apply && trainedDecision.category!==decision.category){
-      decision={...decision,category:trainedDecision.category,reviewNeeded:true,decisionSource:'trained-local',trainingConfidence:trainedDecision.confidence};
+    const remembered=findReviewCorrection(mail,records);
+    if(remembered){
+      let decision={category:remembered.category,urgency:'낮음',needsReply:false,confidence:0.99,reviewNeeded:true,reviewed:false,decisionSource:'review-memory',correction:remembered,modelPrediction:null};
+      decision=applyUrgencyPolicy(mail,decision);
+      records.unshift({...mail,collectedAt:new Date().toISOString(),...decision,modelBodyTruncated:false,initialDecision:{category:decision.category,urgency:decision.urgency,needsReply:decision.needsReply,source:decision.decisionSource}});
+      progress.stage='saving';
+      await save();
+      processed.push(mail.id);
+      progress.completed++;
+      continue;
     }
-    decision=applyUrgencyPolicy(mail,decision);
-    records.unshift({...mail,collectedAt:new Date().toISOString(),...decision,modelBodyTruncated,reviewNeeded:decision.reviewNeeded || modelBodyTruncated});
-    progress.stage='saving';
-    await save();
-    processed.push(mail.id);
-    progress.completed++;
+    layaItems.push({mail,trainedDecision:trained[index]});
+  }
+  for(let start=0;start<layaItems.length;start+=LAYA_BATCH_SIZE){
+    signal.throwIfAborted();
+    const chunk=layaItems.slice(start,start+LAYA_BATCH_SIZE);
+    progress.stage='classifying';progress.current=progress.completed+1;
+    const layaResults=await classifyWithLaya(chunk,signal);
+    for(const [offset,item] of chunk.entries()){
+      signal.throwIfAborted();
+      const {mail,trainedDecision}=item;
+      progress.stage='classifying';progress.current=progress.completed+1;
+      const prediction=normalize(layaResults[offset]);signal.throwIfAborted();
+      const modelBodyTruncated=mail.body.length>MODEL_BODY_CHARS || prediction.raw.usage?.truncated===true;
+      let decision=applyCorrections(mail,prediction,records);
+      if(decision.decisionSource==='laya'){
+        const policyCategory=classifyByPolicy(mail);
+        if(policyCategory){
+          decision={...decision,category:policyCategory,reviewNeeded:decision.reviewNeeded || policyCategory!==decision.category,decisionSource:'category-policy'};
+        }else if(trainedDecision?.apply && trainedDecision.category!==decision.category){
+          decision={...decision,category:trainedDecision.category,reviewNeeded:true,decisionSource:'trained-local',trainingConfidence:trainedDecision.confidence};
+        }
+      }
+      decision=applyUrgencyPolicy(mail,decision);
+      records.unshift({...mail,collectedAt:new Date().toISOString(),...decision,modelBodyTruncated,reviewNeeded:decision.reviewNeeded || modelBodyTruncated,initialDecision:{category:decision.category,urgency:decision.urgency,needsReply:decision.needsReply,source:decision.decisionSource}});
+      progress.stage='saving';
+      await save();
+      processed.push(mail.id);
+      progress.completed++;
+    }
   }
   signal.throwIfAborted();progress.stage='done';progress.finishedAt=new Date().toISOString();
   return processed;
@@ -193,6 +243,19 @@ const server = http.createServer(async (req,res) => {
     }
     if(req.method==='POST' && req.url==='/api/stop') {if(jobController){jobController.abort();progress.stage='stopping';}return reply(200,{ok:true});}
     if(req.method==='POST' && req.url==='/api/train') {if(busy) throw new Error('현재 작업이 끝난 뒤 재학습해주세요.');busy=true;try{trainingReport=await runClassifier('train');return reply(200,{report:trainingReport});}finally{busy=false;}}
+    if(req.method==='POST' && req.url==='/api/sample') {
+      if(busy)throw new Error('작업이 끝난 뒤 무작위 검토를 시작해주세요.');
+      const unreviewed=records.filter(record=>!record.reviewed);
+      const candidates=unreviewed.filter(record=>!record.evaluationSample);
+      const fresh=candidates.filter(record=>record.initialDecision);
+      const pool=fresh.length?fresh:candidates.length?candidates:unreviewed;
+      if(!pool.length)throw new Error('검토할 메일이 없습니다.');
+      const sample=pool[randomInt(pool.length)];
+      sample.evaluationSample=true;
+      sample.initialDecision ??={category:sample.category,urgency:sample.urgency,needsReply:sample.needsReply,source:sample.decisionSource || 'unknown'};
+      await save();
+      return reply(200,{id:sample.id});
+    }
     if(req.method==='POST' && req.url==='/api/connect') {
       if(busy) throw new Error('분류 또는 연결이 진행 중입니다.');
       const account=String(payload.account || '').trim().toLowerCase();

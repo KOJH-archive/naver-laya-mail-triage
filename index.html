@@ -19,7 +19,7 @@ progress{display:block;width:100%;height:12px;margin:12px 0;accent-color:#087d4c
 <label><input id="remember" type="checkbox">이 PC에 저장</label><button id="login" type="submit">IMAP 연결</button><button id="reconnect" type="button" hidden>저장된 정보로 연결</button><button id="disconnect" type="button">연결 해제</button>
 <a href="https://help.naver.com/service/30029/contents/21344?osType=COMMONOS" target="_blank" rel="noreferrer">네이버 연결 설정</a></form>
 <form id="delivery-settings" class="toolbar" autocomplete="off"><label>결과 받을 Gmail <input id="saved-recipient" type="email" placeholder="name@gmail.com" required style="max-width:100%;width:240px"></label><label><input id="auto-send" type="checkbox" checked>미응답 시 1분 후 자동 전송</label><button id="save-delivery" type="submit">수신 설정 저장</button></form>
-<div class="toolbar"><label>수집 수 <input id="limit" type="number" min="1" max="50" value="10" style="width:75px"></label><label><input id="unread" type="checkbox" checked>안 읽은 메일만</label><button class="primary" id="run">분류 시작</button><button id="train">검토 결과 재학습</button><button id="export">선택 결과 내보내기</button><button id="refresh">새로고침</button></div><div id="message" role="status"></div><div id="training-status" role="status"></div><div class="layout"><div class="list"><table><thead><tr><th>선택</th><th>제목 / 발신자</th><th>분류</th><th>긴급도</th><th>검토</th></tr></thead><tbody id="rows"></tbody></table><div id="empty" class="empty">분류된 메일이 없습니다.</div></div><aside class="detail" id="detail">메일을 선택해주세요.</aside></div></main>
+<div class="toolbar"><label>수집 수 <input id="limit" type="number" min="1" max="50" value="10" style="width:75px"></label><label><input id="unread" type="checkbox" checked>안 읽은 메일만</label><button class="primary" id="run">분류 시작</button><button id="sample">무작위 검토</button><button id="train">검토 결과 재학습</button><button id="export">선택 결과 내보내기</button><button id="refresh">새로고침</button></div><div id="message" role="status"></div><div class="layout"><div class="list"><table><thead><tr><th>선택</th><th>제목 / 발신자</th><th>분류</th><th>긴급도</th><th>검토</th></tr></thead><tbody id="rows"></tbody></table><div id="empty" class="empty">분류된 메일이 없습니다.</div></div><aside class="detail" id="detail">메일을 선택해주세요.</aside></div></main>
 <dialog id="approval" class="approval" aria-labelledby="approval-title"><header><h2 id="approval-title">최종 승인하시겠습니까?</h2></header><div class="approval-body"><p id="approval-summary"></p><p id="approval-auto-status" role="status"></p><div id="approval-groups"></div></div><form id="approval-form"><label>받을 Gmail 주소<input id="recipient" type="email" placeholder="name@gmail.com" required></label><div class="approval-actions"><button id="change-recipient" type="button">주소 저장</button><button id="decline" type="button">아니오</button><button id="approve" type="submit" class="primary">예, Gmail로 보내기</button></div></form></dialog>
 <script>
 const job=document.createElement('section');job.className='job';job.hidden=true;job.setAttribute('aria-label','분류 진행 상황');
@@ -55,7 +55,7 @@ async function api(url,data){
 }
 async function action(fn){
   el('message').textContent='';
-  for(const id of ['run','login','reconnect','disconnect','train'])el(id).disabled=true;
+  for(const id of ['run','login','reconnect','disconnect','train','sample'])el(id).disabled=true;
   try{await fn()}catch(e){el('message').textContent=e.message}
   finally{el('login').disabled=false;await load()}
 }
@@ -73,6 +73,7 @@ async function load(){
   el('login').disabled=v.busy;
   el('disconnect').disabled=v.busy || !v.connected;
   el('train').disabled=v.busy || !records.some(r=>r.reviewed);
+  el('sample').disabled=v.busy || !records.some(r=>!r.reviewed);
   el('rows').replaceChildren();el('empty').hidden=records.length>0;
   el('status').title='검토 정답 '+records.filter(r=>r.reviewed).length+'개';
   for(const r of records){
@@ -80,7 +81,7 @@ async function load(){
     cb.type='checkbox';cb.checked=selected.has(r.id);
     cb.onchange=()=>cb.checked?selected.add(r.id):selected.delete(r.id);td.append(cb);tr.append(td);
     const title=node('td',r.subject+' / '+r.sender);title.className='subject';title.onclick=()=>detail(r);
-    tr.append(title,node('td',r.category),node('td',r.urgency),node('td',r.reviewed?'검토 완료':r.decisionSource==='review-memory'?'정답 보정 · 확인 필요':r.decisionSource==='trained-local'?'학습 보정 · 확인 필요':r.reviewNeeded?'확인 필요':'미검토'));
+    tr.append(title,node('td',r.category),node('td',r.urgency),node('td',r.reviewed?'검토 완료':r.decisionSource==='review-memory'?'정답 보정 · 확인 필요':r.decisionSource==='category-policy'?'명시 기준 · 확인 필요':r.decisionSource==='trained-local'?'학습 보정 · 확인 필요':r.reviewNeeded?'확인 필요':'미검토'));
     el('rows').append(tr);
   }
 }
@@ -170,7 +171,8 @@ el('recipient').oninput=()=>el('recipient').setCustomValidity('');
 function detail(r){
   const p=el('detail');p.replaceChildren(node('h2',r.subject),node('p',r.sender),node('p','모델 확신도 '+Math.round(r.confidence*100)+'%'));
   if(r.readStateVerified)p.append(node('p','수집 당시 '+(r.seen?'읽은 메일':'안 읽은 메일')+' · 읽음 상태 유지 확인'));
-  if(r.decisionSource==='review-memory')p.append(node('p','검토 정답 보정 적용 · 유사 사례 '+r.correction.examples+'개 · Laya 최초 분류: '+r.modelPrediction.category));
+  if(r.decisionSource==='review-memory')p.append(node('p','검토 정답 보정 적용 · 유사 사례 '+r.correction.examples+'개'+(r.modelPrediction?' · Laya 최초 분류: '+r.modelPrediction.category:' · Laya 호출 생략')));
+  if(r.decisionSource==='category-policy')p.append(node('p','제목의 명시 기준 적용 · Laya 최초 분류: '+r.modelPrediction.category));
   if(r.decisionSource==='trained-local')p.append(node('p','학습 분류기 보정 적용 · Laya 최초 분류: '+r.modelPrediction.category));
   const urgencyReason={ 'promotion-default':'광고 기본 기준','routine-default':'일반 알림·영수증 기본 기준','action-signal':'조치 또는 회신 요청','risk-signal':'보안·결제 위험 신호','deadline-signal':'임박한 마감 신호' }[r.urgencySource];
   if(urgencyReason)p.append(node('p','긴급도 판단: '+urgencyReason));
@@ -197,8 +199,8 @@ el('run').onclick=()=>action(async()=>{
   await request;await pollProgress();await checkApproval();
 });
 el('refresh').onclick=()=>action(load);
-async function loadTraining(){const result=await api('/api/training');const r=result.report;el('training-status').textContent=r?.publicSeed?'가상 예시로 만든 공개 기본 분류기 적용 중 · 개인 메일 학습 데이터 없음':r?'검토 정답 '+r.reviewed+'개로 학습 · 발신자별 평가 '+r.evaluated+'개 중 Laya '+r.baseCorrect+'개, 학습 보정 적용 시 '+r.blendedCorrect+'개 · '+(r.enabled?'유사한 새 메일에 제한 적용':'새 메일에는 적용 보류'):'';}
-el('train').onclick=()=>action(async()=>{const result=await api('/api/train',{});const r=result.report;await loadTraining();el('message').textContent=r.enabled?'재학습을 완료하고 제한적으로 적용했습니다.':'재학습은 완료했지만 검증 기준을 충족하지 않아 적용을 보류했습니다.';});
+el('sample').onclick=()=>action(async()=>{const result=await api('/api/sample',{});await load();const record=records.find(r=>r.id===result.id);if(record)detail(record);});
+el('train').onclick=()=>action(async()=>{const result=await api('/api/train',{});const r=result.report;el('message').textContent=r.enabled?'재학습을 완료했습니다. 비슷한 새 메일에는 검토 정답을 우선 적용합니다.':'재학습은 완료했지만 아직 자동 보정 적용 기준에는 부족합니다.';});
 el('export').onclick=()=>action(async()=>{
   const data=await api('/api/export',{ids:[...selected]});
   const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
@@ -209,7 +211,6 @@ api('/api/health').then(v=>el('status').textContent=v.model?'Laya 연결됨':'La
 loadDeliverySettings().catch(e=>el('message').textContent=e.message);
 load().catch(e=>el('message').textContent=e.message);
 checkApproval().catch(()=>{});
-loadTraining().catch(()=>{});
 setInterval(()=>load().catch(()=>{}),10000);
 setInterval(()=>checkApproval().catch(()=>{}),3000);
 pollProgress();setInterval(pollProgress,1000);setInterval(renderApprovalCountdown,1000);

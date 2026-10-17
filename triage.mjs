@@ -6,9 +6,9 @@ export const questions={
 export function normalize(result){const a=result.answers;if(!a?.category?.probabilities || !['낮음','보통','높음'].includes(a.urgency?.choice) || typeof a.needs_reply?.noul!=='number') throw new Error('Laya 응답 형식을 확인해주세요.');const confidence=Number(a.category.probabilities[a.category.choice]);if(!Number.isFinite(confidence)) throw new Error('분류 확신도가 없습니다.');return {category:a.category.choice,urgency:a.urgency.choice,needsReply:a.needs_reply.noul>=0.5,confidence,reviewNeeded:confidence<0.7 || Math.abs(a.needs_reply.noul-0.5)<0.15,reviewed:false,raw:result};}
 export function applyUrgencyPolicy(mail,decision){
   const text=`${mail.subject}\n${mail.body.slice(0,1600)}`.toLowerCase();
-  if(decision.category==='광고')return {...decision,urgency:'낮음',urgencySource:'promotion-default'};
   const risk=/(비정상.{0,8}(로그인|접속)|의심스러운.{0,8}(로그인|접속|결제)|무단.{0,8}(접속|결제)|계정.{0,8}(탈취|도용)|결제.{0,8}실패|suspicious.{0,15}(login|activity)|unauthorized.{0,15}(access|payment)|payment failed)/i.test(text);
   if(risk)return {...decision,urgency:'높음',urgencySource:'risk-signal',reviewNeeded:true};
+  if(decision.category==='광고')return {...decision,urgency:'낮음',urgencySource:'promotion-default'};
   const deadline=/(오늘까지|금일.{0,12}마감|24시간 이내|즉시.{0,12}(조치|확인|변경)|due today|within 24 hours)/i.test(text);
   if(deadline)return {...decision,urgency:'높음',urgencySource:'deadline-signal',reviewNeeded:true};
   const action=/(본인.{0,6}확인.{0,12}(필요|요청|완료)|인증.{0,12}(필요|요청|완료)|승인.{0,12}(필요|요청)|제출.{0,12}(필요|요청)|회신.{0,12}(필요|요청)|결제.{0,12}(필요|요청)|비밀번호.{0,12}(변경|재설정).{0,12}(필요|요청)|action required|verification required|please (confirm|verify|reply|pay))/i.test(text);
